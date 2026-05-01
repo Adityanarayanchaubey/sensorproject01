@@ -1,189 +1,160 @@
 import sys
-from typing import Generator, Liat, Tuple
 import os
-import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score
+import pandas as pd
 
-from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import GridSearchCV, train_test_split
+from xgboost import XGBClassifier
+
 from src.constant import *
 from src.exception import CustomException
 from src.logger import logging
 from src.utils.main_utils import MainUtils
 
-
 from dataclasses import dataclass
+
+
 @dataclass
 class ModelTrainerConfig:
-    artifact_folder=os.path.join(artifact_folder)
-    trained_model_path=os.path.join(artifact_folder,"model.pkl")
-    expected_accuracy= 0.45
-    model_config_file_path=os.path.join('config','model.yaml')
+    artifact_folder = os.path.join(artifact_folder)
+    trained_model_path = os.path.join(artifact_folder, "model.pkl")
+    expected_accuracy = 0.45
+    model_config_file_path = os.path.join('config', 'model.yaml')
+
 
 class ModelTrainer:
     def __init__(self):
+        self.config = ModelTrainerConfig()
+        self.utils = MainUtils()
 
-        self.model_trainer_config=ModelTrainerConfig()
-
-        self.utils=MainUtils()
-
-        self.models={
-            'XGBClassifier':XGBClassifier(),
-            'GradientBoostingClassifier':GradientBoostingClassifier(),
-            'SVC':SVC(),
-            'RandomForestClassifier':RandomForestClassifier()
+        self.models = {
+            "XGBClassifier": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+            "GradientBoostingClassifier": GradientBoostingClassifier(),
+            "SVC": SVC(),
+            "RandomForestClassifier": RandomForestClassifier()
         }
 
-    def evaluate_models(self,X,y,models):
+    # -------------------------------
+    # Evaluate models
+    # -------------------------------
+    def evaluate_models(self, X_train, y_train, X_test, y_test):
         try:
-            X_train, X_test, y_train, y_test=train_test_split(
-                X,y,test_size=0.2,random_state=42
-            )
+            report = {}
 
-            report={}
+            for name, model in self.models.items():
+                logging.info(f"Training model: {name}")
 
-            for i in range(len(list(models))):
-                model= list(models.values())[i]
+                model.fit(X_train, y_train)
 
-                model.fitr(X_train,y_train)
+                y_pred = model.predict(X_test)
 
-                y_train_pred=model.predict(X_train)
+                score = accuracy_score(y_test, y_pred)
 
-                y_test_pred=model.predict(X_test)
+                report[name] = score
 
-                train_model_score=accuracy_score(y_train,y_train_pred)
-
-                test_model_score=accuracy_score(y_test,y_test_pred)
-
-                report[list(models.keys())[i]]=test_model_score
+                logging.info(f"{name} score: {score}")
 
             return report
-    
+
         except Exception as e:
-            raise CustomException(e,sys)
-        
-    def get_best_model(self,
-                       x_train:np.array,
-                       y_train:np.array,
-                       x_test:np.array,
-                       y_test:np.array):
+            raise CustomException(e, sys)
+
+    # -------------------------------
+    # Get best model
+    # -------------------------------
+    def get_best_model(self, model_report: dict):
         try:
+            best_model_name = max(model_report, key=model_report.get)
+            best_score = model_report[best_model_name]
+            best_model = self.models[best_model_name]
 
+            return best_model_name, best_model, best_score
 
-            model_report:dict=self.evaluate_models(
-                x_train=x_train,
-                y_train=y_train,
-                x_test= x_test,
-                y_test=y_test,
-                models=self.models
+        except Exception as e:
+            raise CustomException(e, sys)
 
+    # -------------------------------
+    # Hyperparameter tuning
+    # -------------------------------
+    def finetune_best_model(self, best_model, best_model_name, X_train, y_train):
+        try:
+            config = self.utils.read_yaml_file(self.config.model_config_file_path)
+
+            param_grid = config["model_selection"]["model"][best_model_name]["search_param_grid"]
+
+            logging.info(f"Running GridSearch for {best_model_name}")
+
+            grid_search = GridSearchCV(
+                estimator=best_model,
+                param_grid=param_grid,
+                cv=3,
+                n_jobs=-1,
+                verbose=1
             )
 
-            print(model_report)
+            grid_search.fit(X_train, y_train)
 
-            best_model_score=max(sorted(model_report.values()))
+            logging.info(f"Best params: {grid_search.best_params_}")
 
-            ## to get best model name from dict
-            best_model_name=list(model_report.keys())[
-                list(model_report()).index(best_model_score)
-            ]
+            return grid_search.best_estimator_
 
-            best_model_object=self.models[best_model_name]
-
-            return best_model_name, best_model_object, best_model_score
-        
         except Exception as e:
-            raise CustomException(e,sys)
-        
-    
-    def finetune_best_model(self,
-                        best_model_object:object,
-                        best_model_name,
-                        x_train,
-                        y_train,
-                        )->object:
-        
+            raise CustomException(e, sys)
+
+    # -------------------------------
+    # Main training pipeline
+    # -------------------------------
+    def initiate_model_trainer(self, train_array, test_array):
         try:
-            
-            model_param_grid=self.utils.read_yaml_file(self.model_trainer_config.model_config_file_path)["model_selection"]["model"][best_model_name]["search_param_grid"]
+            logging.info("Splitting train/test arrays")
 
-            grid_search=GridSearchCV(
-                best_model_object,param_grid=model_param_grid,cv=5,n_jobs=-1,verbose=1)
-            
-            grid_search.fit(x_train,y_train)
+            X_train = train_array[:, :-1]
+            y_train = train_array[:, -1]
 
-            best_params=grid_search.best_params_
+            X_test = test_array[:, :-1]
+            y_test = test_array[:, -1]
 
-            print("best params are:",best_params)
+            # Step 1: Evaluate base models
+            model_report = self.evaluate_models(X_train, y_train, X_test, y_test)
 
-            finetuned_model=best_model_object.set_params(**best_params)
+            # Step 2: Select best model
+            best_model_name, best_model, best_score = self.get_best_model(model_report)
 
-            return finetuned_model
-        
-        except Exception as e:
-            raise CustomException(e,sys)
+            logging.info(f"Best base model: {best_model_name} with score {best_score}")
 
-    
-    def initiate_model_trainer(self,train_array,test_array):
-        try:
-            logging.info(f"splitting training and testing input and target feature")
-
-            x_train,y_train,x_test,y_test=(
-                train_array[:,:-1],
-                train_array[:,-1],
-                test_array[:,-1],
-                test_array[:,-1],
-
-            )   
-
-
-            logging.info(f"Extracting model config file path")
-
-            model_report:dict=self.evaluate_models(X=x_train,y=y_train,models=self.models)
-
-            #to get best model score from dict
-            best_model_score=max(sorted(model_report.values()))
-
-            #to get best model  name from dict 
-            best_model_name=list(model_report.keys())[
-                list(model_report.values()).index(best_model_score)
-            ] 
-        
-            best_model=self.models[best_model_name]
-
-            best_model=self.finetune_best_model(
-                best_model_name=best_model_name,
-                best_model_object=best_model,
-                x_train=x_train,
-                y_train=y_train
+            # Step 3: Fine-tune best model
+            best_model = self.finetune_best_model(
+                best_model,
+                best_model_name,
+                X_train,
+                y_train
             )
 
-            best_model.fit(x_train,y_train)
-            y_pred=best_model.predict(x_test)
-            best_model_score=accuracy_score(y_test,y_pred)
+            # Step 4: Final evaluation
+            best_model.fit(X_train, y_train)
+            y_pred = best_model.predict(X_test)
 
-            print(f"best ,odel name {best_model_name} and score: {best_model_score}")
+            final_score = accuracy_score(y_test, y_pred)
 
-            if best_model_score<0.5:
-                raise Exception("no best model found with an accuracy greater than the threshold 0.6")
-        
-            logging.info(f"Best found model on both training and testing dataset")
+            logging.info(f"Final model score: {final_score}")
 
-            logging.info(
-                f"saving model at path:{self.model_trainer_config.trained_model_path}"
-            )
+            if final_score < self.config.expected_accuracy:
+                raise Exception("No model meets expected accuracy")
 
-            os.makedirs(os.path.dirname(self.model_trainer_config.trained_model_path),exist_ok=True)
+            # Step 5: Save model
+            os.makedirs(os.path.dirname(self.config.trained_model_path), exist_ok=True)
 
             self.utils.save_object(
-                file_path=self.model_trainer_config.trained_model_path,
+                file_path=self.config.trained_model_path,
                 obj=best_model
             )
 
-            return self.model_trainer_config.trained_model_path
-    
+            logging.info("Model saved successfully")
+
+            return self.config.trained_model_path
+
         except Exception as e:
-            raise CustomException(e,sys)
+            raise CustomException(e, sys)

@@ -25,7 +25,7 @@ class DataTransformation:
     def __init__(self,feature_store_file_path):
         self.feature_store_file_path= feature_store_file_path
         
-        self.data_transformation_config= DataTransformation()
+        self.data_transformation_config= DataTransformationConfig()
 
         self.utils=MainUtils()
 
@@ -34,7 +34,7 @@ class DataTransformation:
         try:
             data=pd.read_csv(feature_store_file_path)
 
-            data.rename(columns={"Good/Bad":TARGET_COLUMN},INPLACE=True)
+            data.rename(columns={"Good/Bad":TARGET_COLUMN},inplace=True)
 
             return data
         except Exception as e:
@@ -63,7 +63,7 @@ class DataTransformation:
         try:
             dataframe= self.get_data(feature_store_file_path=self.feature_store_file_path)
 
-            x=dataframe.drop(columns=TARGET_COLUMN)
+            X=dataframe.drop(columns=[TARGET_COLUMN])
             y=np.where(dataframe[TARGET_COLUMN]==-1,0,1)
 
             X_train,X_test,y_train,y_test= train_test_split(X,y,test_size=0.2)
@@ -78,8 +78,8 @@ class DataTransformation:
 
             self.utils.save_object(file_path=preprocessor_path,obj=preprocessor)
 
-            train_arr=np.c[x_train_scaled,np.array(y_train)]
-            test_arr=np.c[x_test_scaled,np.array(y_test)]
+            train_arr=np.c_[x_train_scaled,np.array(y_train)]
+            test_arr=np.c_[x_test_scaled,np.array(y_test)]
 
             return (train_arr,test_arr,preprocessor_path)
         
