@@ -174,16 +174,7 @@ Contains:
 * Managing feature consistency between training and prediction
 * Building deployable ML systems using Flask
 
----
 
-## ⚡ Future Improvements
-
-* Add UI display for predictions
-* Add model confidence scores
-* Implement API-based prediction
-* Add model monitoring & logging dashboard
-
----
 
 ## 🤝 Contribution
 
