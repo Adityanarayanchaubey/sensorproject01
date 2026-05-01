@@ -135,7 +135,7 @@ Upload CSV file → Download predictions automatically
 
 ---
 
-## 📥 Input Format (Important)
+## 📥 Input Format 
 
 ### ✔ Correct Input (for prediction)
 
@@ -164,15 +164,6 @@ Contains:
 
 * Original features
 * Predicted label (`good` / `bad`)
-
----
-
-## 🧠 Key Learnings
-
-* Handling ML pipelines end-to-end
-* Debugging real-world data issues
-* Managing feature consistency between training and prediction
-* Building deployable ML systems using Flask
 
 
 
